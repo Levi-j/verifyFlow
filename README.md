@@ -2,7 +2,7 @@
 
 verifyFlow is a TypeScript and Playwright test suite for the [OrderFlow REST API](https://github.com/Levi-j/orderFlow-backend), a Spring Boot order-management backend. It tests the service through its public HTTP endpoints, without accessing application internals or the database.
 
-The current tests cover authentication, role-based access control, request validation, error handling, request correlation, and the published OpenAPI contract. The framework also checks its own configuration, helpers, and diagnostic behavior independently of OrderFlow.
+The tests cover authentication, authorization, product creation and catalog behavior, request validation, error handling, request correlation, and the published OpenAPI contract. Separate framework tests check configuration, reusable helpers, and diagnostics without starting OrderFlow.
 
 ## Getting started
 
@@ -67,6 +67,7 @@ Tests focus on behavior visible to an API consumer:
 
 - **Registration and login:** successful and unsuccessful requests, email normalization, duplicate accounts, password and email boundaries, token responses, and sensitive-field exclusion.
 - **User identity:** authenticated `/users/me` responses, customer isolation, and administrator identity.
+- **Products:** administrator creation and updates, SKU normalization and duplicates, field and price limits, active and inactive product visibility, pagination, and sorting.
 - **Authorization:** access to user, order, product, inventory, and administrator endpoints as anonymous, `CUSTOMER`, and `ADMIN` callers. Tests distinguish `401` from `403` and require a valid success response to establish permitted access.
 - **Registration privileges:** attempts to supply administrator roles or authority fields cannot elevate a newly registered account.
 - **Bearer authentication:** missing, malformed, and unsupported credentials, authentication challenges, and invalid credentials sent to public routes.
@@ -76,7 +77,7 @@ Tests focus on behavior visible to an API consumer:
 
 The suite uses three Playwright projects. `framework` tests the test code itself without a running backend. `sut-ready` waits for OrderFlow to become healthy, and `api` runs HTTP tests after that check succeeds.
 
-Business-workflow tests for products, inventory, and orders, as well as concurrency and browser testing, are not implemented yet. JWT tests involving constructed unsigned, altered-claim, or differently signed tokens are also outside the current suite.
+Inventory and order workflows, concurrency, and browser tests are not implemented yet. Tests using constructed unsigned, altered-claim, or differently signed JWTs are also deferred.
 
 ## Test environment and safety
 
@@ -135,18 +136,20 @@ npm.cmd test
 
 Reusable code lives under `src/`, while the tests are grouped under `tests/api/` and `tests/framework/`:
 
-| Location         | Responsibility                                              |
-| ---------------- | ----------------------------------------------------------- |
-| `src/api/`       | Playwright HTTP client and typed authentication API methods |
-| `src/contracts/` | Zod validation for API responses, errors, and OpenAPI data  |
-| `src/data/`      | Unique test accounts and valid request data                 |
-| `src/fixtures/`  | Anonymous, customer, and administrator API sessions         |
-| `src/support/`   | Problem-response assertions and safe diagnostics            |
-| `src/config/`    | Environment parsing and target restrictions                 |
+| Location         | Responsibility                                                       |
+| ---------------- | -------------------------------------------------------------------- |
+| `src/api/`       | Playwright HTTP client and typed authentication and product methods  |
+| `src/contracts/` | Zod schemas for API responses, pagination, errors, and OpenAPI data  |
+| `src/data/`      | Unique customer and product data                                     |
+| `src/fixtures/`  | Anonymous, customer, and administrator sessions; test-owned products |
+| `src/support/`   | Problem-response assertions and safe diagnostics                     |
+| `src/config/`    | Environment parsing and target restrictions                          |
 
 API methods return the raw Playwright `APIResponse`, so tests can check expected failures as well as successes. A reusable `toBeProblem` matcher checks error status, response contract, application error code, and request-ID consistency.
 
-Test data is generated per test, avoiding dependencies on execution order or an empty database. Administrator authentication is reused per worker and refreshed before the token expires.
+Tests create their own accounts and products with unique identifiers, without relying on execution order or an empty database. Administrator authentication is reused per worker and refreshed before the token expires.
+
+Catalog tests check pagination metadata and sort order within individual responses rather than expecting global results to stay unchanged while other tests add products. Visibility checks scan a bounded range of recently updated products and fail if they cannot establish whether the test product is listed.
 
 ## Investigating failures
 

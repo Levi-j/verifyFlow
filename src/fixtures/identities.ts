@@ -70,7 +70,11 @@ export async function registerCustomer(anonymous: ApiClient): Promise<Customer> 
   };
 }
 
-async function requireStatus(response: APIResponse, status: number, step: string): Promise<void> {
+export async function requireStatus(
+  response: APIResponse,
+  status: number,
+  step: string,
+): Promise<void> {
   if (response.status() !== status) {
     throw new Error(
       `Test setup failed: ${step} returned ${await describeResponse(response)}; ` +

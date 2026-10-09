@@ -3,8 +3,8 @@ import { z } from 'zod';
 import type { ApiClient } from '../../../src/api/api-client';
 import { AUTH_PATHS, AuthApi } from '../../../src/api/auth-api';
 import { userSchema } from '../../../src/contracts/auth';
+import { pageSchema } from '../../../src/contracts/page';
 import { parseResponse } from '../../../src/contracts/parse-response';
-import { uniqueSuffix } from '../../../src/data/unique';
 import type { Customer } from '../../../src/fixtures/identities';
 import { expect, test } from '../../../src/fixtures/test';
 
@@ -37,12 +37,7 @@ const OPERATIONS: ProtectedOperation[] = [
   { method: 'POST', path: '/api/v1/admin/orders/{id}/cancel', allowed: ['admin'] },
 ];
 
-const pageSchema = z.object({
-  content: z.array(z.unknown()),
-  totalElements: z.number().int().nonnegative(),
-});
-
-const createdProductSchema = z.object({ id: z.number().int().positive() });
+const anyPageSchema = pageSchema(z.unknown());
 
 const inventorySchema = z.object({
   productId: z.number().int(),
@@ -93,7 +88,10 @@ test.describe('Authorization matrix: authorized callers', () => {
     const response = await customer.api.get('/api/v1/orders');
 
     expect(response.status()).toBe(200);
-    expect(await parseResponse(response, pageSchema)).toEqual({ content: [], totalElements: 0 });
+    expect(await parseResponse(response, anyPageSchema)).toMatchObject({
+      content: [],
+      totalElements: 0,
+    });
   });
 
   test('administrators can list products and all orders', async ({ admin }) => {
@@ -101,16 +99,15 @@ test.describe('Authorization matrix: authorized callers', () => {
       const response = await admin.get(path);
 
       expect(response.status(), path).toBe(200);
-      await parseResponse(response, pageSchema);
+      await parseResponse(response, anyPageSchema);
     }
   });
 
-  test('administrators can create a product and read its inventory', async ({ admin }) => {
-    const created = await admin.post('/api/v1/admin/products', {
-      body: { sku: `VF-AUTHZ-${uniqueSuffix()}`, name: 'Authorization check', price: 9.99 },
-    });
-    expect(created.status()).toBe(201);
-    const { id } = await parseResponse(created, createdProductSchema);
+  test('administrators can create a product and read its inventory', async ({
+    admin,
+    createProduct,
+  }) => {
+    const { id } = await createProduct();
 
     const stock = await admin.get(`/api/v1/admin/inventory/${id}`);
     const movements = await admin.get(`/api/v1/admin/inventory/${id}/movements`);
@@ -121,7 +118,10 @@ test.describe('Authorization matrix: authorized callers', () => {
       quantityOnHand: 0,
     });
     expect(movements.status()).toBe(200);
-    expect(await parseResponse(movements, pageSchema)).toEqual({ content: [], totalElements: 0 });
+    expect(await parseResponse(movements, anyPageSchema)).toMatchObject({
+      content: [],
+      totalElements: 0,
+    });
   });
 });
 

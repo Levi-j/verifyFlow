@@ -4,13 +4,17 @@ import { AuthApi } from '../api/auth-api';
 import { loadAdminCredentials, loadTestConfig } from '../config/env';
 import { ApiExchangeLog } from '../support/api-diagnostics';
 import { problemMatchers } from '../support/problem-matcher';
+import type { Product } from '../contracts/product';
+import type { NewProduct } from '../data/products';
 import { AdminSession, registerCustomer, type Customer } from './identities';
+import { createProductAsAdmin } from './products';
 
 interface TestFixtures {
   anonymous: ApiClient;
   admin: ApiClient;
   createCustomer: () => Promise<Customer>;
   customer: Customer;
+  createProduct: (overrides?: Partial<NewProduct>) => Promise<Product>;
 }
 
 interface WorkerFixtures {
@@ -44,6 +48,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
   customer: async ({ createCustomer }, use) => {
     await use(await createCustomer());
+  },
+
+  createProduct: async ({ admin }, use) => {
+    await use((overrides) => createProductAsAdmin(admin, overrides));
   },
 });
 
