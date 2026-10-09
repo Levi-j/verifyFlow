@@ -1,0 +1,35 @@
+{
+  "name": "verifyflow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Black-box API test automation framework for the OrderFlow backend, built with TypeScript and Playwright.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "sut:up": "docker compose -f compose.sut.yaml up --detach --build --wait",
+    "sut:down": "docker compose -f compose.sut.yaml down --remove-orphans",
+    "sut:reset": "npm run sut:down && npm run sut:up",
+    "sut:logs": "docker compose -f compose.sut.yaml logs app",
+    "test": "playwright test --project=framework --project=api",
+    "test:smoke": "playwright test --project=api --grep @smoke",
+    "test:framework": "playwright test --project=framework",
+    "report": "playwright show-report",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.0",
+    "@types/node": "24.19.2",
+    "eslint": "10.12.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-playwright": "2.12.1",
+    "prettier": "3.9.9",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1",
+    "zod": "4.6.5"
+  }
+}

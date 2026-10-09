@@ -1,0 +1,33 @@
+name: verifyflow-sut
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build:
+      context: ${ORDERFLOW_SOURCE_DIR:?Set ORDERFLOW_SOURCE_DIR to an OrderFlow checkout}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ORDERFLOW_JWT_SECRET: ${ORDERFLOW_JWT_SECRET:?Set ORDERFLOW_JWT_SECRET (at least 32 bytes)}
+      ORDERFLOW_ADMIN_EMAIL: ${ORDERFLOW_ADMIN_EMAIL:?Set ORDERFLOW_ADMIN_EMAIL}
+      ORDERFLOW_ADMIN_PASSWORD: ${ORDERFLOW_ADMIN_PASSWORD:?Set ORDERFLOW_ADMIN_PASSWORD}
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+    ports:
+      - '127.0.0.1:18080:8080'
