@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality checks and framework tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out verifyFlow
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run framework tests
+        run: npm run test:framework
+
+      - name: Upload framework test report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: framework-report-attempt-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  api-tests:
+    name: API tests against OrderFlow
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ORDERFLOW_BASE_URL: http://127.0.0.1:18080
+      ORDERFLOW_SOURCE_DIR: ${{ github.workspace }}/.sut/orderflow-backend
+      POSTGRES_DB: verifyflow_ci
+      POSTGRES_USER: verifyflow_ci
+      ORDERFLOW_ADMIN_EMAIL: admin@verifyflow.test
+    steps:
+      - name: Check out verifyFlow
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check out the tested OrderFlow revision
+        uses: actions/checkout@v7
+        with:
+          repository: Levi-j/orderFlow-backend
+          ref: c0d77be16050cfa86e091b06f0c2873258477727
+          path: .sut/orderflow-backend
+          persist-credentials: false
+
+      # Each value is 64 hex characters: long enough for the JWT signing key (32+ bytes) and
+      # within the password policy (15+ code points, at most 72 bytes). Values are masked
+      # before they are exported so later log output shows *** instead.
+      - name: Generate test-only credentials
+        run: |
+          for name in POSTGRES_PASSWORD ORDERFLOW_JWT_SECRET ORDERFLOW_ADMIN_PASSWORD; do
+            value="$(openssl rand -hex 32)"
+            echo "::add-mask::${value}"
+            echo "${name}=${value}" >> "$GITHUB_ENV"
+          done
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and start OrderFlow and PostgreSQL
+        run: npm run sut:up
+
+      - name: Run smoke tests
+        run: npm run test:smoke
+
+      - name: Run full regression
+        run: npm test
+
+      - name: Collect container status and logs
+        if: failure() || cancelled()
+        run: |
+          mkdir -p sut-logs
+          docker compose -f compose.sut.yaml ps --all \
+            --format 'table {{.Service}}\t{{.Image}}\t{{.Status}}' > sut-logs/containers.txt
+          npm run --silent sut:logs > sut-logs/orderflow.log
+          docker compose -f compose.sut.yaml logs --no-color postgres > sut-logs/postgres.log
+
+      - name: Upload test reports and logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: api-test-results-attempt-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+            sut-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop OrderFlow and PostgreSQL
+        if: always()
+        run: npm run sut:down

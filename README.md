@@ -76,7 +76,7 @@ Tests focus on behavior visible to an API consumer:
 
 The suite uses three Playwright projects. `framework` tests the test code itself without a running backend. `sut-ready` waits for OrderFlow to become healthy, and `api` runs HTTP tests after that check succeeds.
 
-Business-workflow tests for products, inventory, and orders, as well as concurrency, browser testing, and CI workflows, are not implemented yet. JWT tests involving constructed unsigned, altered-claim, or differently signed tokens are also outside the current suite.
+Business-workflow tests for products, inventory, and orders, as well as concurrency and browser testing, are not implemented yet. JWT tests involving constructed unsigned, altered-claim, or differently signed tokens are also outside the current suite.
 
 ## Test environment and safety
 
@@ -104,6 +104,32 @@ Other targets, including `localhost:8080`, require `VERIFYFLOW_ALLOW_NON_ISOLATE
 | `ORDERFLOW_ADMIN_EMAIL`, `ORDERFLOW_ADMIN_PASSWORD` | Bootstrapped test administrator credentials             |
 
 See [`.env.example`](.env.example) for the configuration template.
+
+## Continuous integration
+
+[GitHub Actions](.github/workflows/ci.yml) runs on pull requests, pushes to `main`, a daily schedule, and manual dispatch. The workflow has two jobs:
+
+1. **Quality:** Installs dependencies and runs formatting, linting, type checks, and framework tests. This job does not need Docker or a running OrderFlow instance.
+2. **API tests:** After quality checks pass, checks out OrderFlow at a pinned commit, starts a fresh Docker Compose environment, and runs the smoke tests followed by the full regression suite.
+
+The pinned OrderFlow revision keeps the backend under test consistent between runs. Each run also generates its own database password, JWT secret, and administrator password. No local `.env` file or stored repository secrets are required.
+
+Playwright uses two workers in CI and retries failed tests once. A test that passes only on retry is still treated as a failure, so intermittent failures remain visible. API traces stay disabled to avoid capturing sensitive request data.
+
+When a job fails, GitHub Actions retains the Playwright report and test results for seven days. The API job also collects OrderFlow and PostgreSQL logs and container status. Its test containers are removed at the end of the job, including after a failure.
+
+To run the same checks locally:
+
+```powershell
+npm.cmd ci
+npm.cmd run format:check
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd run test:framework
+npm.cmd run sut:up
+npm.cmd run test:smoke
+npm.cmd test
+```
 
 ## Framework design
 
@@ -138,7 +164,7 @@ The API client assigns a request ID to ordinary requests. You can use an ID from
 npm.cmd run sut:logs | Select-String 'vf-fa74bcca-5'
 ```
 
-Replace the example ID with the one reported by your test. Transport failures also use shortened error messages to avoid exposing request headers.
+Replace the example ID with the one from the failed test. For GitHub Actions failures, look up the ID in `sut-logs/orderflow.log` from the workflow artifact. Transport failures use shortened error messages to avoid exposing request headers.
 
 ## Development checks
 
