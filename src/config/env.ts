@@ -14,16 +14,46 @@ const environmentSchema = z.object({
   VERIFYFLOW_HEALTH_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
 });
 
+const adminCredentialsSchema = z.object({
+  ORDERFLOW_ADMIN_EMAIL: z.email(),
+  ORDERFLOW_ADMIN_PASSWORD: z.string().min(1),
+});
+
 export interface TestConfig {
   baseUrl: string;
   healthTimeoutMs: number;
 }
 
+export interface AdminCredentials {
+  email: string;
+  password: string;
+}
+
 export function loadTestConfig(): TestConfig {
+  loadEnvFileIfPresent();
+  return parseTestConfig(process.env);
+}
+
+export function loadAdminCredentials(): AdminCredentials {
+  loadEnvFileIfPresent();
+  return parseAdminCredentials(process.env);
+}
+
+export function parseAdminCredentials(environment: NodeJS.ProcessEnv): AdminCredentials {
+  const result = adminCredentialsSchema.safeParse(environment);
+  if (!result.success) {
+    throw new Error(`Invalid administrator configuration:\n${z.prettifyError(result.error)}`);
+  }
+  return {
+    email: result.data.ORDERFLOW_ADMIN_EMAIL,
+    password: result.data.ORDERFLOW_ADMIN_PASSWORD,
+  };
+}
+
+function loadEnvFileIfPresent(): void {
   if (existsSync(ENV_FILE)) {
     process.loadEnvFile(ENV_FILE);
   }
-  return parseTestConfig(process.env);
 }
 
 export function parseTestConfig(environment: NodeJS.ProcessEnv): TestConfig {

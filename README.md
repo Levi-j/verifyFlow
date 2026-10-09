@@ -1,33 +1,26 @@
 # verifyFlow
 
-verifyFlow is a black-box API test automation framework for [OrderFlow](https://github.com/Levi-j/orderFlow-backend), a Spring Boot order management backend. It tests OrderFlow the way an external client uses it: over HTTP, through the public API only.
+verifyFlow is a TypeScript and Playwright test automation project for the [OrderFlow REST API](https://github.com/Levi-j/orderFlow-backend), a Java and Spring Boot order-management backend. It tests the service as an external client would, using HTTP requests rather than application internals or direct database access.
 
-The project is under active development. This README describes what is currently implemented.
+The current suite covers account registration, login, authenticated user details, and basic API availability. Tests include successful workflows, invalid input, boundary conditions, response contracts, and error handling.
 
-## Tech Stack
+## Technology
 
-- TypeScript
-- Node.js 24
-- Playwright Test (API testing with `APIRequestContext`)
-- Zod (configuration and response validation)
+- TypeScript and Node.js 24
+- Playwright Test and `APIRequestContext`
+- Zod for configuration and response validation
+- Docker Compose and PostgreSQL for the isolated test environment
 - ESLint and Prettier
-- Docker Compose (disposable OrderFlow test environment)
 
-## How the Test Environment Works
+## Getting started
 
-verifyFlow builds OrderFlow from source and runs it in its own Docker Compose project, `verifyflow-sut`, defined in [`compose.sut.yaml`](compose.sut.yaml):
-
-- OrderFlow is published on `http://127.0.0.1:18080`, so it can run alongside a development instance on port 8080.
-- PostgreSQL stores its data in memory (`tmpfs`) and does not publish a port. Stopping the environment discards all data, and every start begins with a fresh database.
-- An administrator account is bootstrapped from configuration when OrderFlow starts.
-
-Before the API tests run, a Playwright setup project (`sut-ready`) polls `GET /actuator/health` until OrderFlow reports `UP` or a timeout is reached.
-
-## Prerequisites
+### Prerequisites
 
 - Node.js 24
-- Docker Desktop (Linux containers) or Docker Engine with Docker Compose
-- A local checkout of [orderFlow-backend](https://github.com/Levi-j/orderFlow-backend), by default next to this repository
+- Docker Desktop running Linux containers, or Docker Engine with Docker Compose
+- A local checkout of [OrderFlow](https://github.com/Levi-j/orderFlow-backend)
+
+By default, the repositories should be adjacent:
 
 ```text
 dev/
@@ -35,79 +28,139 @@ dev/
 └── verifyFlow/
 ```
 
-## Setup
+If OrderFlow is elsewhere, set `ORDERFLOW_SOURCE_DIR` in your local configuration.
 
-Install dependencies:
+### Install and configure
+
+From the verifyFlow directory, install dependencies and copy the example configuration:
 
 ```powershell
 npm ci
-```
-
-Create a local configuration file:
-
-```powershell
 Copy-Item .env.example .env
 ```
 
-Fill in `POSTGRES_PASSWORD`, `ORDERFLOW_JWT_SECRET`, and `ORDERFLOW_ADMIN_PASSWORD` with test-only values. One way to generate a random value:
+Edit `.env` and provide test-only values for the database password, JWT signing secret, and administrator password. You can generate a random value with:
 
 ```powershell
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-`ORDERFLOW_JWT_SECRET` must be at least 32 bytes, and `ORDERFLOW_ADMIN_PASSWORD` must be at least 15 characters. The `.env` file is ignored by Git.
+Use separate generated values for `POSTGRES_PASSWORD`, `ORDERFLOW_JWT_SECRET`, and `ORDERFLOW_ADMIN_PASSWORD`. The JWT secret must be at least 32 bytes, and the administrator password must satisfy OrderFlow's password policy (at least 15 Unicode code points and no more than 72 UTF-8 bytes).
 
-The `.env` file is optional. Any setting can be supplied as an environment variable instead, and environment variables take precedence over values in `.env`.
+The `.env` file is ignored by Git. It is optional if you supply the required settings as environment variables; environment variables take precedence over values in `.env`.
 
-## Running the Tests
+### Run the tests
 
-```powershell
-npm run sut:up          # build and start OrderFlow with a fresh database
-npm test                # run the framework and API tests
-npm run test:smoke      # run only the API smoke tests
-npm run test:framework  # run framework self-tests (no OrderFlow needed)
-npm run sut:down        # stop the environment and discard its data
-```
-
-The tests are organized into Playwright projects:
-
-| Project     | Contents                                                              | Needs OrderFlow |
-| ----------- | --------------------------------------------------------------------- | --------------- |
-| `framework` | Self-tests for verifyFlow's own code, such as the target safety guard | No              |
-| `sut-ready` | Waits until OrderFlow reports `UP`; runs automatically before `api`   | Yes             |
-| `api`       | Black-box tests of the OrderFlow API                                  | Yes             |
-
-The first `sut:up` builds the OrderFlow image and takes a few minutes; later starts reuse the Docker build cache. The environment can stay running across test runs. `npm run sut:reset` restarts it with an empty database.
-
-## Configuration
-
-| Variable                                            | Purpose                                                                | Default                  |
-| --------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------ |
-| `ORDERFLOW_BASE_URL`                                | API under test                                                         | `http://127.0.0.1:18080` |
-| `VERIFYFLOW_ALLOW_NON_ISOLATED_TARGET`              | Allow an `ORDERFLOW_BASE_URL` other than the isolated test environment | `false`                  |
-| `VERIFYFLOW_HEALTH_TIMEOUT_MS`                      | Maximum wait for OrderFlow to report `UP`                              | `120000`                 |
-| `ORDERFLOW_SOURCE_DIR`                              | OrderFlow checkout used to build the test environment                  | —                        |
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Test database settings                                                 | —                        |
-| `ORDERFLOW_JWT_SECRET`                              | JWT signing secret for the test environment                            | —                        |
-| `ORDERFLOW_ADMIN_EMAIL`, `ORDERFLOW_ADMIN_PASSWORD` | Bootstrapped test administrator                                        | —                        |
-
-### Target safety
-
-The tests create and modify data, so by default verifyFlow only runs against its isolated test environment:
-
-- `http://127.0.0.1:18080`
-- `http://localhost:18080`
-
-Every other target is refused, including other local ports such as a development instance on `http://localhost:8080` that may hold data worth keeping. To run against a different environment deliberately, set `VERIFYFLOW_ALLOW_NON_ISOLATED_TARGET=true`. Only do this for an environment whose data can be safely modified.
-
-## Debugging
+Start the isolated OrderFlow environment and run the suite:
 
 ```powershell
-npm run sut:logs    # OrderFlow logs (ECS JSON)
-npm run report      # open the latest HTML test report
+npm run sut:up
+npm test
 ```
 
-## Code Quality
+Other useful commands:
+
+| Command                  | Purpose                                                   |
+| ------------------------ | --------------------------------------------------------- |
+| `npm run test:smoke`     | Run the API smoke tests                                   |
+| `npm run test:framework` | Test verifyFlow's own helpers without OrderFlow or Docker |
+| `npm run sut:reset`      | Recreate the test environment with an empty database      |
+| `npm run sut:logs`       | View OrderFlow's application logs                         |
+| `npm run sut:down`       | Remove the test containers and discard their database     |
+| `npm run report`         | Open the Playwright HTML report                           |
+
+The initial Docker image build may take a few minutes. Subsequent starts can reuse cached build layers. Running `sut:up` while the environment is already up does not clear its database; use `sut:reset` when you need a fresh one.
+
+## Test environment
+
+[`compose.sut.yaml`](compose.sut.yaml) builds OrderFlow from the local checkout and runs it with PostgreSQL in a separate Compose project named `verifyflow-sut`.
+
+- The API is available at `http://127.0.0.1:18080`, leaving the usual OrderFlow development port (`8080`) untouched.
+- PostgreSQL uses temporary in-memory storage and has no published host port.
+- OrderFlow bootstraps a test administrator from the supplied configuration.
+- The `sut-ready` Playwright setup project checks `/actuator/health` and waits for the service to report `UP` before API tests begin.
+
+The tests create and modify data. To avoid accidentally targeting a development or production database, verifyFlow accepts only `http://127.0.0.1:18080` and `http://localhost:18080` by default. All other targets, including `localhost:8080`, require `VERIFYFLOW_ALLOW_NON_ISOLATED_TARGET=true`. Use that override only with an environment whose data is safe to change.
+
+### Configuration
+
+| Variable                                            | Purpose                                     | Default                    |
+| --------------------------------------------------- | ------------------------------------------- | -------------------------- |
+| `ORDERFLOW_BASE_URL`                                | API endpoint under test                     | `http://127.0.0.1:18080`   |
+| `VERIFYFLOW_ALLOW_NON_ISOLATED_TARGET`              | Explicitly permit another API target        | `false`                    |
+| `VERIFYFLOW_HEALTH_TIMEOUT_MS`                      | Maximum wait for API readiness              | `120000`                   |
+| `ORDERFLOW_SOURCE_DIR`                              | Path to the local OrderFlow source checkout | Set in local configuration |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Test database configuration                 | Set in local configuration |
+| `ORDERFLOW_JWT_SECRET`                              | Test JWT signing secret                     | Required                   |
+| `ORDERFLOW_ADMIN_EMAIL`, `ORDERFLOW_ADMIN_PASSWORD` | Test administrator credentials              | Required for admin tests   |
+
+## Framework design
+
+The framework keeps HTTP transport, response validation, test setup, and assertions separate:
+
+| Component        | Responsibility                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------- |
+| `src/api/`       | A small client built on `APIRequestContext`, plus typed authentication endpoint methods |
+| `src/contracts/` | Zod schemas for successful responses and API errors                                     |
+| `src/data/`      | Valid, unique test inputs                                                               |
+| `src/fixtures/`  | Anonymous, administrator, and newly registered customer sessions                        |
+| `src/support/`   | Reusable error assertions and safe request diagnostics                                  |
+| `src/config/`    | Environment loading, validation, and target protection                                  |
+
+API methods return Playwright's raw `APIResponse`, leaving each test to assert the expected result. This is useful for negative tests, where a `400`, `401`, or `409` response may be the correct outcome.
+
+For example, a duplicate-registration test can use the same API method as a successful-registration test:
+
+```ts
+test('rejects an email that is already registered', async ({ anonymous, customer }) => {
+  const response = await new AuthApi(anonymous).register({
+    email: customer.email,
+    password: validPassword(),
+  });
+
+  await expect(response).toBeProblem(409, 'EMAIL_ALREADY_REGISTERED');
+});
+```
+
+Tests that need customer accounts create unique data, so they can run independently and in parallel without relying on an empty database or a particular execution order. Administrator authentication is reused within each worker and refreshed before token expiry.
+
+## Current coverage
+
+| Area                | Tests cover                                                                                                                       |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Registration        | Successful account creation, `CUSTOMER` role, email normalization, duplicate addresses, malformed input, and response data safety |
+| Password validation | Minimum of 15 Unicode code points, maximum of 72 UTF-8 bytes, and multibyte character boundaries                                  |
+| Login               | Valid and invalid credentials, case-insensitive emails, bearer token response, and overlength password handling                   |
+| Current user        | Registration-to-login workflow, `/users/me`, customer identity isolation, and administrator identity                              |
+| Platform            | API health, public OpenAPI documentation, and restricted health detail exposure                                                   |
+
+Tests run in three Playwright projects:
+
+- `framework` checks configuration, client behavior, assertions, data generation, and diagnostic safety without starting OrderFlow.
+- `sut-ready` waits for the API to become healthy.
+- `api` runs the black-box HTTP tests and depends on `sut-ready`.
+
+Product, inventory, and order automation, broader security checks, concurrency tests, browser tests, and CI workflows are not part of the current implementation.
+
+## Investigating failures
+
+Playwright produces an HTML report with test results and assertion details:
+
+```powershell
+npm run report
+```
+
+When an API test fails, the report includes an `api-exchanges.json` attachment with a short record of the requests made during that test. It contains the HTTP method, path, status, request ID, duration, and recognized application error code. Request bodies, response bodies, query strings, authorization headers, and credentials are not included.
+
+The API client normally supplies an `X-Request-Id` header. OrderFlow includes the same ID in its structured logs, making it possible to connect a failing assertion to a server-side request:
+
+```powershell
+npm run sut:logs | Select-String 'vf-fa74bcca-5'
+```
+
+Replace the sample ID with one from a failed test. API traces are disabled because they can contain authentication headers and sensitive request data.
+
+## Development checks
 
 ```powershell
 npm run format:check
@@ -115,16 +168,4 @@ npm run lint
 npm run typecheck
 ```
 
-## Project Structure
-
-```text
-verifyFlow/
-├── src/
-│   └── config/          # environment loading, validation, and target safety check
-├── tests/
-│   ├── sut-ready.setup.ts  # waits for OrderFlow to become healthy
-│   ├── framework/          # self-tests for verifyFlow's own code
-│   └── api/                # API test specs
-├── compose.sut.yaml     # disposable OrderFlow + PostgreSQL environment
-└── playwright.config.ts
-```
+The source is organized by responsibility: reusable test code under `src/`, API specifications under `tests/api/`, and independent framework checks under `tests/framework/`. Playwright configuration lives in [`playwright.config.ts`](playwright.config.ts).
