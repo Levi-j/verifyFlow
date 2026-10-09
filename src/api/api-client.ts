@@ -39,13 +39,18 @@ export class ApiClient {
     options: RequestOptions,
   ): Promise<APIResponse> {
     const startedAt = performance.now();
-    const response = await this.request.fetch(path, {
-      method,
-      data: options.body,
-      params: options.params,
-      headers: { ...this.defaultHeaders(options.requestId), ...options.headers },
-      failOnStatusCode: false,
-    });
+    let response: APIResponse;
+    try {
+      response = await this.request.fetch(path, {
+        method,
+        data: options.body,
+        params: options.params,
+        headers: { ...this.defaultHeaders(options.requestId), ...options.headers },
+        failOnStatusCode: false,
+      });
+    } catch (error) {
+      throw transportFailure(method, path, error);
+    }
     await this.exchangeLog.record(method, response, performance.now() - startedAt);
     return response;
   }
@@ -60,4 +65,12 @@ export class ApiClient {
     }
     return headers;
   }
+}
+
+// Playwright's error message ends with a call log that lists every request header,
+// including Authorization, so only its first line is kept.
+function transportFailure(method: HttpMethod, path: string, error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const summary = message.split('\n', 1)[0] ?? '';
+  return new Error(`${method} ${path} failed without an HTTP response: ${summary}`);
 }

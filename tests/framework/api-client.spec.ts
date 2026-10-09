@@ -89,6 +89,15 @@ test.describe('ApiClient', () => {
       expect(serialized.includes(secret), 'diagnostics must not contain secrets').toBe(false);
     }
   });
+
+  test('reports a dropped connection without revealing request headers', async () => {
+    const client = new ApiClient(context, new ApiExchangeLog()).withToken(SECRET_TOKEN);
+
+    const failure = await failureMessage(client.get('/disconnect'));
+
+    expect(failure).toMatch(/^GET \/disconnect failed without an HTTP response: /);
+    expect(failure.includes(SECRET_TOKEN), 'message must not contain the token').toBe(false);
+  });
 });
 
 test.describe('toBeProblem matcher', () => {
@@ -160,7 +169,7 @@ async function echoed(response: APIResponse) {
   return echoSchema.parse(await response.json());
 }
 
-async function failureMessage(assertion: Promise<void>): Promise<string> {
+async function failureMessage(assertion: Promise<unknown>): Promise<string> {
   try {
     await assertion;
   } catch (error) {
@@ -190,6 +199,9 @@ function respond(incoming: IncomingMessage, outgoing: ServerResponse): void {
   };
 
   switch (path) {
+    case '/disconnect':
+      incoming.socket.destroy();
+      return;
     case '/echo':
       return send(outgoing, 200, 'application/json', requestId, {
         authorization: incoming.headers.authorization ?? null,
