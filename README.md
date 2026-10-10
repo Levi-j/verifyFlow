@@ -2,7 +2,7 @@
 
 verifyFlow is a TypeScript and Playwright test suite for the [OrderFlow REST API](https://github.com/Levi-j/orderFlow-backend), a Spring Boot order-management backend. It tests the service through its public HTTP endpoints, without accessing application internals or the database.
 
-The tests cover authentication, access control, products, inventory, and order management, including placement, cancellation, and idempotency. They also check request validation, error handling, request IDs, and the published OpenAPI contract. Separate framework tests validate configuration, shared helpers, and diagnostics without starting OrderFlow.
+Coverage includes authentication, access control, products, inventory, and the order lifecycle, alongside request validation, error handling, request IDs, and the OpenAPI contract. Dedicated concurrency tests check how the API behaves when requests compete for the same stock or order. Framework tests validate shared utilities and configuration without starting OrderFlow.
 
 ## Getting started
 
@@ -50,14 +50,15 @@ npm.cmd test
 
 Other commands:
 
-| Command                      | Purpose                                              |
-| ---------------------------- | ---------------------------------------------------- |
-| `npm.cmd run test:smoke`     | Run the API smoke tests                              |
-| `npm.cmd run test:framework` | Run framework tests without Docker or OrderFlow      |
-| `npm.cmd run sut:reset`      | Recreate the test environment with an empty database |
-| `npm.cmd run sut:logs`       | View OrderFlow's application logs                    |
-| `npm.cmd run sut:down`       | Stop the containers and discard the test database    |
-| `npm.cmd run report`         | Open the Playwright HTML report                      |
+| Command                        | Purpose                                              |
+| ------------------------------ | ---------------------------------------------------- |
+| `npm.cmd run test:smoke`       | Run the API smoke tests                              |
+| `npm.cmd run test:framework`   | Run framework tests without Docker or OrderFlow      |
+| `npm.cmd run test:concurrency` | Run the four race-condition tests separately         |
+| `npm.cmd run sut:reset`        | Recreate the test environment with an empty database |
+| `npm.cmd run sut:logs`         | View OrderFlow's application logs                    |
+| `npm.cmd run sut:down`         | Stop the containers and discard the test database    |
+| `npm.cmd run report`           | Open the Playwright HTML report                      |
 
 The first start builds the OrderFlow Docker image. Later starts can reuse cached layers. Running `sut:up` against an existing environment does **not** reset its database; use `sut:reset` when you need a clean start.
 
@@ -80,9 +81,29 @@ Tests focus on behavior visible to an API consumer:
 - **HTTP errors:** malformed JSON, invalid input, unsupported methods and content types, content negotiation, invalid path parameters, and unknown routes.
 - **API documentation:** health and OpenAPI availability, documented operations, bearer security requirements, and the required `Idempotency-Key` header for order creation.
 
-The suite uses three Playwright projects. `framework` tests the test code itself without a running backend. `sut-ready` waits for OrderFlow to become healthy, and `api` runs HTTP tests after that check succeeds.
+Playwright separates the suite into four projects: `framework` checks shared test utilities, `sut-ready` checks that OrderFlow is healthy, and `api` runs the regular HTTP tests. The `concurrency` project runs independently after the same readiness check. The default `npm.cmd test` command excludes concurrency tests.
 
-Concurrency and browser tests are not implemented yet. Tests using constructed unsigned, altered-claim, or differently signed JWTs are also deferred.
+Browser tests and tests using constructed unsigned, altered-claim, or differently signed JWTs are deferred.
+
+### Concurrency tests
+
+The regular API tests check individual requests and state changes. The concurrency tests look at what happens when several requests target the same resources at once:
+
+- **Limited stock:** Ten customers each try to buy one unit of a product with five units available. Exactly five orders should succeed; the others should receive insufficient-stock conflicts. Inventory must never fall below zero.
+- **Shared idempotency key:** Five identical order requests use the same customer and key. Only one order and stock deduction should be recorded. The other requests may replay the original result or receive an in-use conflict.
+- **Confirm versus cancel:** An administrator sends both actions for the same pending order. Only one transition may succeed, and the final order status and inventory must match the winning action.
+- **Double cancellation:** A customer and an administrator try to cancel the same order. Stock must be restored once, with a single cancellation movement attributed to the successful caller.
+
+Each scenario creates its own test data before sending the competing requests. Once all requests finish, the tests check their responses, the saved orders, stock levels, and full inventory movement history. Scenarios run separately with one Playwright worker, while the requests within each scenario run concurrently. Retries are disabled so failures aren't masked.
+
+```powershell
+npm.cmd run test:concurrency
+npx.cmd playwright test --project=concurrency --repeat-each=10
+```
+
+Start the test environment first with `npm.cmd run sut:up`. The repeat command runs each scenario ten times with fresh data. Run concurrency tests separately from other suites using the same environment to avoid unrelated resource contention.
+
+These checks can reveal inconsistent behavior under contention, but they don't guarantee that every possible request interleaving has been exercised.
 
 ## Test environment and safety
 
@@ -118,9 +139,11 @@ See [`.env.example`](.env.example) for the configuration template.
 1. **Quality:** Installs dependencies and runs formatting, linting, type checks, and framework tests. This job does not need Docker or a running OrderFlow instance.
 2. **API tests:** After quality checks pass, checks out OrderFlow at a pinned commit, starts a fresh Docker Compose environment, and runs the smoke tests followed by the full regression suite.
 
+Scheduled and manually triggered workflows also run each concurrency scenario three times after the regular regression. Pushes and pull requests skip this extra run. Concurrency reports are written to `playwright-report/concurrency/` and `test-results/concurrency/`, keeping them separate from the regular API results.
+
 The pinned OrderFlow revision keeps the backend under test consistent between runs. Each run also generates its own database password, JWT secret, and administrator password. No local `.env` file or stored repository secrets are required.
 
-Playwright uses two workers in CI and retries failed tests once. A test that passes only on retry is still treated as a failure, so intermittent failures remain visible. API traces stay disabled to avoid capturing sensitive request data.
+The regular CI tests use two workers and allow one retry, but a test that only passes on retry still fails the job. Concurrency tests use one worker and no retries. API tracing stays disabled to avoid collecting sensitive request data.
 
 When a job fails, GitHub Actions retains the Playwright report and test results for seven days. The API job also collects OrderFlow and PostgreSQL logs and container status. Its test containers are removed at the end of the job, including after a failure.
 
@@ -139,7 +162,7 @@ npm.cmd test
 
 ## Framework design
 
-Reusable code lives under `src/`, while the tests are grouped under `tests/api/` and `tests/framework/`:
+Reusable code lives under `src/`, while the tests are grouped under `tests/api/`, `tests/framework/`, and `tests/concurrency/`:
 
 | Location         | Responsibility                                                                                                       |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------- |
@@ -171,6 +194,8 @@ npm.cmd run report
 ```
 
 Failed API tests include an `api-exchanges.json` attachment containing only selected metadata: HTTP method, path, status, request ID, duration, and recognized application error code. Request and response bodies, query strings, authorization headers, and credentials are not collected in these attachments. API tracing is disabled because traces may contain sensitive request data.
+
+Concurrency failures include a `race-evidence.json` attachment with relevant response details, order and user IDs, stock quantities, and inventory movements. It excludes credentials and raw response bodies. After downloading a scheduled or manual CI artifact, you can open its report with `npx.cmd playwright show-report playwright-report/concurrency`.
 
 The API client assigns a request ID to ordinary requests. You can use an ID from a failed test to find the corresponding server-side events:
 

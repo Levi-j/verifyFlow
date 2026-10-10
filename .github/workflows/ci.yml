@@ -108,6 +108,12 @@ jobs:
       - name: Run full regression
         run: npm test
 
+      - name: Run concurrency tests
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/concurrency
+        run: npm run test:concurrency -- --repeat-each=3 --output=test-results/concurrency
+
       - name: Collect container status and logs
         if: failure() || cancelled()
         run: |

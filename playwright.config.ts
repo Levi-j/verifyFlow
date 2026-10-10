@@ -36,5 +36,14 @@ export default defineConfig({
       testDir: './tests/api',
       dependencies: ['sut-ready'],
     },
+    {
+      name: 'concurrency',
+      testDir: './tests/concurrency',
+      dependencies: ['sut-ready'],
+      fullyParallel: false,
+      workers: 1,
+      retries: 0,
+      timeout: 60_000,
+    },
   ],
 });
