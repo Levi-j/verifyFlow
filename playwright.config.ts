@@ -45,5 +45,19 @@ export default defineConfig({
       retries: 0,
       timeout: 60_000,
     },
+    {
+      name: 'browser',
+      testDir: './tests/browser',
+      dependencies: ['sut-ready'],
+      fullyParallel: false,
+      workers: 1,
+      retries: 0,
+      use: {
+        browserName: 'chromium',
+        screenshot: 'only-on-failure',
+        trace: 'retain-on-failure',
+        video: 'off',
+      },
+    },
   ],
 });

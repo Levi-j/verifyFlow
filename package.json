@@ -15,6 +15,7 @@
     "test:smoke": "playwright test --project=api --grep @smoke",
     "test:framework": "playwright test --project=framework",
     "test:concurrency": "playwright test --project=concurrency",
+    "test:browser": "playwright test --project=browser",
     "report": "playwright show-report",
     "lint": "eslint .",
     "format": "prettier --write .",

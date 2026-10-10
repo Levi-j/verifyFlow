@@ -79,9 +79,6 @@ jobs:
           path: .sut/orderflow-backend
           persist-credentials: false
 
-      # Each value is 64 hex characters: long enough for the JWT signing key (32+ bytes) and
-      # within the password policy (15+ code points, at most 72 bytes). Values are masked
-      # before they are exported so later log output shows *** instead.
       - name: Generate test-only credentials
         run: |
           for name in POSTGRES_PASSWORD ORDERFLOW_JWT_SECRET ORDERFLOW_ADMIN_PASSWORD; do
@@ -113,6 +110,16 @@ jobs:
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/concurrency
         run: npm run test:concurrency -- --repeat-each=3 --output=test-results/concurrency
+
+      - name: Install Chromium
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Swagger UI browser tests
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/browser
+        run: npm run test:browser -- --output=test-results/browser
 
       - name: Collect container status and logs
         if: failure() || cancelled()
