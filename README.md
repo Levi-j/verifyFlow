@@ -2,7 +2,7 @@
 
 verifyFlow is a TypeScript and Playwright test suite for the [OrderFlow REST API](https://github.com/Levi-j/orderFlow-backend), a Spring Boot order-management backend. It tests the service through its public HTTP endpoints, without accessing application internals or the database.
 
-The tests cover authentication, authorization, product and inventory operations, request validation, error handling, request correlation, and the published OpenAPI contract. Separate framework tests check configuration, reusable helpers, and diagnostics without starting OrderFlow.
+The tests cover authentication, access control, product and inventory operations, order placement, and idempotency. They also check request validation, error handling, request IDs, and the published OpenAPI contract. Separate framework tests validate the configuration, shared helpers, and diagnostics without starting OrderFlow.
 
 ## Getting started
 
@@ -69,6 +69,8 @@ Tests focus on behavior visible to an API consumer:
 - **User identity:** authenticated `/users/me` responses, customer isolation, and administrator identity.
 - **Products:** administrator creation and updates, SKU normalization and duplicates, field and price limits, active and inactive product visibility, pagination, and sorting.
 - **Inventory:** stock retrieval, restocks and adjustments, input validation, insufficient-stock handling, and paginated movement history. Tests confirm that rejected adjustments leave both stock and movement records unchanged, and that recorded changes reconcile with the current quantity. Boundary tests cover the 32-bit stock limit.
+- **Order placement:** single- and multi-item orders, response contracts, product snapshots, and independently calculated prices and totals. Tests verify stock deductions and `ORDER_PLACED` movements, and check that failed orders do not leave partial inventory changes.
+- **Idempotency:** required keys, successful replays without duplicate orders or stock deductions, and rejection of keys reused with different requests. Coverage also includes case sensitivity, customer-specific keys, reordered items, and replay after a product is deactivated.
 - **Authorization:** access to user, order, product, inventory, and administrator endpoints as anonymous, `CUSTOMER`, and `ADMIN` callers. Tests distinguish `401` from `403` and require a valid success response to establish permitted access.
 - **Registration privileges:** attempts to supply administrator roles or authority fields cannot elevate a newly registered account.
 - **Bearer authentication:** missing, malformed, and unsupported credentials, authentication challenges, and invalid credentials sent to public routes.
@@ -78,7 +80,7 @@ Tests focus on behavior visible to an API consumer:
 
 The suite uses three Playwright projects. `framework` tests the test code itself without a running backend. `sut-ready` waits for OrderFlow to become healthy, and `api` runs HTTP tests after that check succeeds.
 
-Order workflows and the inventory movements they produce, concurrency, and browser tests are not implemented yet. Tests using constructed unsigned, altered-claim, or differently signed JWTs are also deferred.
+Order listing, retrieval, cancellation, administrator order operations, concurrency, and browser tests are not implemented yet. Tests using constructed unsigned, altered-claim, or differently signed JWTs are also deferred.
 
 ## Test environment and safety
 
@@ -137,14 +139,14 @@ npm.cmd test
 
 Reusable code lives under `src/`, while the tests are grouped under `tests/api/` and `tests/framework/`:
 
-| Location         | Responsibility                                                                 |
-| ---------------- | ------------------------------------------------------------------------------ |
-| `src/api/`       | Shared HTTP client and typed authentication, product, and inventory methods    |
-| `src/contracts/` | Zod schemas for API responses, inventory, pagination, errors, and OpenAPI data |
-| `src/data/`      | Unique customer and product data, plus inventory adjustment builders           |
-| `src/fixtures/`  | API identities and test-owned products with optional starting stock            |
-| `src/support/`   | Error assertions, safe diagnostics, and inventory snapshot helpers             |
-| `src/config/`    | Environment parsing and target restrictions                                    |
+| Location         | Responsibility                                                                        |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| `src/api/`       | Shared HTTP client and typed APIs for authentication, products, inventory, and orders |
+| `src/contracts/` | Zod schemas for API responses, pagination, errors, and OpenAPI data                   |
+| `src/data/`      | Unique test data, inventory adjustments, order payloads, and idempotency keys         |
+| `src/fixtures/`  | API identities and test-owned products with optional starting stock                   |
+| `src/support/`   | Error assertions, safe diagnostics, inventory snapshots, and money calculations       |
+| `src/config/`    | Environment parsing and target restrictions                                           |
 
 API methods return the raw Playwright `APIResponse`, so tests can check expected failures as well as successes. A reusable `toBeProblem` matcher checks error status, response contract, application error code, and request-ID consistency.
 
@@ -153,6 +155,8 @@ Tests create their own accounts and products with unique identifiers, without re
 Catalog tests check pagination metadata and sort order within individual responses rather than expecting global results to stay unchanged while other tests add products. Visibility checks scan a bounded range of recently updated products and fail if they cannot establish whether the test product is listed.
 
 Inventory tests operate only on products they create. This lets them compare the stock level and movement history before and after each adjustment without interference from other workers.
+
+Order tests derive expected totals from the product prices and quantities chosen during setup, then compare them with the server response in integer cents. They also check stock and movement history to confirm that order creation has the expected effects and idempotent replays make no additional changes.
 
 ## Investigating failures
 
