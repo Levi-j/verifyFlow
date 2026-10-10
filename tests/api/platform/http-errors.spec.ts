@@ -94,7 +94,12 @@ test.describe('Unsupported methods', () => {
     const response = await admin.post(`/api/v1/admin/products/${UNUSED_ID}`, { body: {} });
 
     await expect(response).toBeProblem(405, 'METHOD_NOT_ALLOWED');
-    expect(response.headers().allow).toBe('GET, PUT');
+    // Allow lists a set of methods, and OrderFlow's ordering differs between environments.
+    const allowedMethods = (response.headers().allow ?? '')
+      .split(',')
+      .map((method) => method.trim())
+      .sort();
+    expect(allowedMethods).toEqual(['GET', 'PUT']);
   });
 });
 
