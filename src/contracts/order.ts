@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isCentsAmount } from '../support/money';
+import { pageSchema } from './page';
 
 const moneySchema = z
   .number()
@@ -27,5 +28,16 @@ export const orderSchema = z.object({
   items: z.array(orderItemSchema).min(1).max(50),
 });
 
+export const orderSummarySchema = orderSchema.omit({ customerId: true, items: true });
+
+export const adminOrderSummarySchema = orderSchema.omit({ items: true });
+
+export const orderSummaryPageSchema = pageSchema(orderSummarySchema);
+
+export const adminOrderSummaryPageSchema = pageSchema(adminOrderSummarySchema);
+
 export type Order = z.infer<typeof orderSchema>;
 export type OrderItem = z.infer<typeof orderItemSchema>;
+export type OrderStatus = z.infer<typeof orderStatusSchema>;
+export type OrderSummary = z.infer<typeof orderSummarySchema>;
+export type AdminOrderSummary = z.infer<typeof adminOrderSummarySchema>;

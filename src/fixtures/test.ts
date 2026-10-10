@@ -4,8 +4,11 @@ import { AuthApi } from '../api/auth-api';
 import { loadAdminCredentials, loadTestConfig } from '../config/env';
 import { ApiExchangeLog } from '../support/api-diagnostics';
 import { problemMatchers } from '../support/problem-matcher';
+import type { Order } from '../contracts/order';
 import type { Product } from '../contracts/product';
+import type { OrderLine } from '../data/orders';
 import { AdminSession, registerCustomer, type Customer } from './identities';
+import { placeOrderAs } from './orders';
 import { createProductAsAdmin, type ProductSetup } from './products';
 
 interface TestFixtures {
@@ -14,6 +17,7 @@ interface TestFixtures {
   createCustomer: () => Promise<Customer>;
   customer: Customer;
   createProduct: (setup?: ProductSetup) => Promise<Product>;
+  placeOrder: (customer: Customer, lines: OrderLine[]) => Promise<Order>;
 }
 
 interface WorkerFixtures {
@@ -51,6 +55,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
   createProduct: async ({ admin }, use) => {
     await use((setup) => createProductAsAdmin(admin, setup));
+  },
+
+  // The customer is passed in rather than taken from a fixture, so ownership tests can place
+  // orders for several customers. Playwright requires the empty dependency list here.
+  // eslint-disable-next-line no-empty-pattern
+  placeOrder: async ({}, use) => {
+    await use(placeOrderAs);
   },
 });
 
