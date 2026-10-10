@@ -1,6 +1,7 @@
 import type { APIResponse } from '@playwright/test';
 import type { ApiClient } from '../../../src/api/api-client';
-import { ProductsApi, type PageQuery } from '../../../src/api/products-api';
+import type { PageQuery } from '../../../src/api/page-query';
+import { ProductsApi } from '../../../src/api/products-api';
 import { parseResponse } from '../../../src/contracts/parse-response';
 import { productPageSchema, productSchema, type Product } from '../../../src/contracts/product';
 import { productUpdate, type ProductUpdate } from '../../../src/data/products';
@@ -98,10 +99,6 @@ async function updateProduct(
   return parseResponse(response, productSchema);
 }
 
-// Other workers keep adding products, so the catalog cannot be scanned for a reliable answer.
-// Sorting newest-updated first puts a product changed moments ago at the front instead. Once a
-// page ends, or its last entry was updated strictly before the product, that page covers every
-// position the product could occupy, so its presence or absence there is conclusive.
 async function isListed(listProducts: ListProducts, product: Product): Promise<boolean> {
   const productUpdatedAt = Date.parse(product.updatedAt);
   for (let page = 0; page < MAX_PAGES_TO_SCAN; page += 1) {

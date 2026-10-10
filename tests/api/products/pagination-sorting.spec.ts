@@ -1,6 +1,7 @@
 import type { APIResponse } from '@playwright/test';
 import type { ApiClient } from '../../../src/api/api-client';
-import { ProductsApi, type PageQuery } from '../../../src/api/products-api';
+import type { PageQuery } from '../../../src/api/page-query';
+import { ProductsApi } from '../../../src/api/products-api';
 import { parseResponse } from '../../../src/contracts/parse-response';
 import { productPageSchema, type Product, type ProductPage } from '../../../src/contracts/product';
 import { expect, test } from '../../../src/fixtures/test';
@@ -125,8 +126,6 @@ async function pageOf(request: Promise<APIResponse>): Promise<ProductPage> {
   return parseResponse(response, productPageSchema);
 }
 
-// Other workers add products concurrently, so only facts that hold within one response are
-// checked; counts and contents are never compared across requests.
 function expectConsistentPage(page: ProductPage, expected: { page: number; size: number }): void {
   expect(page.page).toBe(expected.page);
   expect(page.size).toBe(expected.size);

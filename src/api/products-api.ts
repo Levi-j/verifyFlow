@@ -1,17 +1,12 @@
 import type { APIResponse } from '@playwright/test';
 import type { NewProduct, ProductUpdate } from '../data/products';
 import type { ApiClient } from './api-client';
+import { pageParams, type PageQuery } from './page-query';
 
 export const PRODUCT_PATHS = {
   publicCatalog: '/api/v1/products',
   adminCatalog: '/api/v1/admin/products',
 } as const;
-
-export interface PageQuery {
-  page?: number;
-  size?: number;
-  sort?: string;
-}
 
 export class ProductsApi {
   constructor(private readonly client: ApiClient) {}
@@ -39,18 +34,4 @@ export class ProductsApi {
   update(id: number, update: ProductUpdate): Promise<APIResponse> {
     return this.client.put(`${PRODUCT_PATHS.adminCatalog}/${id}`, { body: update });
   }
-}
-
-function pageParams({ page, size, sort }: PageQuery): Record<string, string | number> {
-  const params: Record<string, string | number> = {};
-  if (page !== undefined) {
-    params.page = page;
-  }
-  if (size !== undefined) {
-    params.size = size;
-  }
-  if (sort !== undefined) {
-    params.sort = sort;
-  }
-  return params;
 }
